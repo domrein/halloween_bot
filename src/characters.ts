@@ -35,7 +35,7 @@ export const characters = {
     voiceSpeed: 1,
     voicePitch: 0.74,
     voiceEchoMs: 70,
-    voiceCrackle: 0.45,
+    voiceCrackle: 0.7,
     delays: ["Indubitably.", "Most curious.", "One moment."],
     quickLines: [
       { test: hello, say: "Good evening, I observe you." },

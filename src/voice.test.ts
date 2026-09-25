@@ -15,8 +15,8 @@ test("lowers pitch and restores the length", () => {
 
 test("makes the skeleton strain to hold a note", () => {
   const filter = voiceFilter(24000, 1, 0, 0.45);
-  expect(filter).toContain("highpass=f=160");
-  expect(filter).toContain("vibrato=f=5.5:d=0.62");
-  expect(filter).toContain("tremolo=f=6:d=0.28");
-  expect(filter).toContain("crystalizer=i=2.5");
+  expect(filter).toContain("highpass=f=180");
+  expect(filter).toContain("vibrato=f=4.2:d=0.68");
+  expect(filter).toContain("tremolo=f=5:d=0.35");
+  expect(filter).toContain("crystalizer=i=3");
 });

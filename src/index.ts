@@ -199,28 +199,39 @@ async function respond(heardTiming: string, line: string, readyWav: Uint8Array |
     releaseGlance();
     console.log(`speaking: ${line}`);
     await finishBreath();
+    const voiceStarted = performance.now();
+    let wav = readyWav;
+    try {
+      if (!wav) {
+        wav = await colorVoice(config, await synthesize(config, line));
+        timing.push(`voice ${elapsed(voiceStarted)}`);
+      }
+    } catch (error) {
+      timing.push(`voice ${elapsed(voiceStarted)} failed`);
+      console.error(error instanceof Error ? error.message : error);
+      return;
+    }
     listener.pause();
     try {
-      const voiceStarted = performance.now();
-      try {
-        const wav = readyWav ?? (await colorVoice(config, await synthesize(config, line)));
-        if (!readyWav) timing.push(`voice ${elapsed(voiceStarted)}`);
-        const playStarted = performance.now();
-        await play(wav);
-        timing.push(`${readyWav ? "play cached" : "play"} ${elapsed(readyWav ? voiceStarted : playStarted)}`);
-        spoke = true;
-      } catch (error) {
-        timing.push(`speak ${elapsed(voiceStarted)} failed`);
-        console.error(error instanceof Error ? error.message : error);
-      }
+      const playStarted = performance.now();
+      await play(wav);
+      timing.push(`${readyWav ? "play cached" : "play"} ${elapsed(readyWav ? voiceStarted : playStarted)}`);
+      spoke = true;
+    } catch (error) {
+      timing.push(`play ${elapsed(voiceStarted)} failed`);
+      console.error(error instanceof Error ? error.message : error);
     } finally {
-      if (spoke) await Bun.sleep(config.playbackTailMs);
       listener.resume();
+      console.log("listening");
+      if (spoke && config.playbackTailMs > 0) {
+        listener.deafen();
+        await Bun.sleep(config.playbackTailMs);
+        listener.undeafen();
+      }
     }
   } finally {
     releaseGlance();
     console.log(`timing: ${timing.join(", ")}`);
-    console.log("listening");
   }
 }
 

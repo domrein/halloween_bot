@@ -20,5 +20,5 @@
   "minSpeechMs": 400,
   "maxSpeechMs": 8000,
   "levelThreshold": 0.03,
-  "playbackTailMs": 400
+  "playbackTailMs": 120
 }

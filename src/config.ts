@@ -19,6 +19,7 @@ export type Config = {
   voiceSpeed: number;
   voicePitch: number;
   voiceEchoMs: number;
+  voiceCrackle: number;
   delays: string[];
   quickLines: QuickLine[];
   roleFile: string;
@@ -85,6 +86,7 @@ export async function loadConfig(): Promise<Config> {
     voiceSpeed: character.voiceSpeed,
     voicePitch: character.voicePitch,
     voiceEchoMs: character.voiceEchoMs,
+    voiceCrackle: character.voiceCrackle,
     delays: [...character.delays],
     quickLines: character.quickLines.map((line) => ({ ...line })),
     roleFile: character.roleFile,

@@ -46,12 +46,16 @@ export async function synthesize(config: Config, text: string): Promise<Uint8Arr
   });
 }
 
-export function voiceFilter(sampleRate: number, pitch: number, echoMs: number): string | null {
+export function voiceFilter(sampleRate: number, pitch: number, echoMs: number, crackle = 0): string | null {
   const filters: string[] = [];
   if (pitch > 0 && pitch !== 1) {
     const rate = Math.max(1, Math.round(sampleRate * pitch));
     const tempo = (1 / pitch).toFixed(4);
     filters.push(`asetrate=${rate}`, `aresample=${sampleRate}`, `atempo=${tempo}`);
+  }
+  if (crackle > 0) {
+    const mix = Math.min(1, crackle).toFixed(2);
+    filters.push("highpass=f=280", `acrusher=bits=7:mode=log:aa=1:mix=${mix}`, "tremolo=f=22:d=0.18");
   }
   if (echoMs > 0) {
     const first = Math.round(echoMs);
@@ -63,7 +67,7 @@ export function voiceFilter(sampleRate: number, pitch: number, echoMs: number): 
 
 export async function colorVoice(config: Config, wav: Uint8Array): Promise<Uint8Array> {
   const sampleRate = new DataView(wav.buffer, wav.byteOffset, wav.byteLength).getUint32(24, true);
-  const filter = voiceFilter(sampleRate, config.voicePitch, config.voiceEchoMs);
+  const filter = voiceFilter(sampleRate, config.voicePitch, config.voiceEchoMs, config.voiceCrackle);
   if (!filter) return wav;
   const dir = join(tmpdir(), `halloween-bot-color-${process.pid}-${Date.now()}`);
   await mkdir(dir, { recursive: true });

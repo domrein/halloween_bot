@@ -5,6 +5,7 @@ export type Character = {
   voiceSpeed: number;
   voicePitch: number;
   voiceEchoMs: number;
+  voiceCrackle: number;
   delays: string[];
   quickLines: QuickLine[];
   roleFile: string;
@@ -20,6 +21,7 @@ export const characters = {
     voiceSpeed: 0.92,
     voicePitch: 0.78,
     voiceEchoMs: 120,
+    voiceCrackle: 0,
     delays: ["Well.", "Let me think.", "Hmmmmm."],
     quickLines: [
       { test: hello, say: "Hi there!" },
@@ -33,6 +35,7 @@ export const characters = {
     voiceSpeed: 0.86,
     voicePitch: 0.74,
     voiceEchoMs: 150,
+    voiceCrackle: 0.45,
     delays: ["Indubitably.", "Most curious.", "One moment."],
     quickLines: [
       { test: hello, say: "Good evening, I observe you." },
@@ -46,6 +49,7 @@ export const characters = {
     voiceSpeed: 0.9,
     voicePitch: 0.9,
     voiceEchoMs: 100,
+    voiceCrackle: 0,
     delays: ["Well, well.", "Let me stir.", "Hmmmmm."],
     quickLines: [
       { test: hello, say: "Hello, dear." },

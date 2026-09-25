@@ -14,6 +14,11 @@ const camera = new Camera(config);
 const listener = new Listener(config);
 const context = new ContextLog();
 const glances = new Glances(config, camera, context);
+listener.onSpeech = () => {
+  if (!stopping) glances.hold();
+};
+listener.onSpeechCancel = () => glances.release();
+listener.onUtteranceDrop = () => glances.release();
 
 let stopping = false;
 function shutdown(): void {
@@ -185,7 +190,6 @@ listener.onPreviewCancel = () => {
 };
 
 async function respond(heardTiming: string, line: string, readyWav: Uint8Array | null): Promise<void> {
-  glances.hold();
   let released = false;
   const releaseGlance = () => {
     if (released) return;
@@ -197,7 +201,6 @@ async function respond(heardTiming: string, line: string, readyWav: Uint8Array |
   try {
     console.log("thinking");
     context.add("said", line);
-    releaseGlance();
     console.log(`speaking: ${line}`);
     await finishBreath();
     const voiceStarted = performance.now();
@@ -212,6 +215,7 @@ async function respond(heardTiming: string, line: string, readyWav: Uint8Array |
       console.error(error instanceof Error ? error.message : error);
       return;
     }
+    releaseGlance();
     listener.pause();
     try {
       const playStarted = performance.now();
@@ -252,6 +256,7 @@ try {
     } catch (error) {
       console.error(error instanceof Error ? error.message : error);
       console.log(`timing: audio ${audioMs}ms, recognize ${elapsed(recognizeStarted)} failed`);
+      glances.release();
       continue;
     }
     const earlyGuess = early && early.epoch === utterance.epoch ? early : null;
@@ -263,6 +268,7 @@ try {
     if (!transcript) {
       await finishBreath();
       console.log(`timing: ${heardTiming}`);
+      glances.release();
       continue;
     }
     context.add("heard", transcript);
@@ -270,6 +276,7 @@ try {
       stopBreath();
       console.log("noted");
       console.log(`timing: ${heardTiming}`);
+      glances.release();
       continue;
     }
     const canned = guessed?.cannedWav ? guessed : matchCanned(currentCues()?.lines ?? [], transcript);
@@ -294,6 +301,7 @@ try {
         console.error(error instanceof Error ? error.message : error);
         stopBreath();
         console.log(`timing: ${heardTiming}, reply ${elapsed(replyStarted)} failed`);
+        glances.release();
         return;
       }
       await respond(heardTiming, line, null);

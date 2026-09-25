@@ -31,18 +31,23 @@ export class Listener {
       levelThreshold: config.levelThreshold,
       preRollMs: 300,
       previewDelayMs: 280,
+      onSpeech: () => this.onSpeech?.(),
+      onSpeechCancel: () => this.onSpeechCancel?.(),
       onPreview: (pcm, epoch) => this.onPreview?.(epoch, pcm),
       onPreviewCancel: () => this.onPreviewCancel?.(),
     });
   }
 
+  onSpeech: (() => void) | null = null;
+  onSpeechCancel: (() => void) | null = null;
+  onUtteranceDrop: (() => void) | null = null;
   onPreview: ((epoch: number, pcm: Int16Array) => void) | null = null;
   onPreviewCancel: (() => void) | null = null;
 
   pause(): void {
     this.paused = true;
     this.pending = new Int16Array();
-    this.detector.reset();
+    this.detector.reset(true);
   }
 
   resume(): void {
@@ -138,6 +143,7 @@ export class Listener {
     this.queue.push(utterance);
     if (this.queue.length > 2) {
       this.queue.shift();
+      this.onUtteranceDrop?.();
       console.log("dropped audio while transcribing");
     }
   }

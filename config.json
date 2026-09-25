@@ -13,7 +13,7 @@
   "ollamaReplyModel": "qwen2.5:7b",
   "character": "ghost",
   "sampleRate": 16000,
-  "silenceMs": 700,
+  "silenceMs": 450,
   "minSpeechMs": 400,
   "maxSpeechMs": 8000,
   "levelThreshold": 0.03,

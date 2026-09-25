@@ -6,6 +6,8 @@ export type VadOptions = {
   levelThreshold: number;
   preRollMs: number;
   previewDelayMs?: number;
+  onSpeech?: () => void;
+  onSpeechCancel?: () => void;
   onPreview?: (pcm: Int16Array, epoch: number) => void;
   onPreviewCancel?: () => void;
 };
@@ -34,7 +36,8 @@ export class UtteranceDetector {
 
   constructor(private readonly opts: VadOptions) {}
 
-  reset(): void {
+  reset(cancelSpeech = false): void {
+    const cancel = cancelSpeech && this.inSpeech;
     this.inSpeech = false;
     this.preRoll = [];
     this.preRollSamples = 0;
@@ -42,6 +45,7 @@ export class UtteranceDetector {
     this.speechSamples = 0;
     this.silenceSamples = 0;
     this.sentPreview = false;
+    if (cancel) this.opts.onSpeechCancel?.();
   }
 
   push(chunk: Int16Array): Int16Array | null {
@@ -54,6 +58,7 @@ export class UtteranceDetector {
       this.trimPreRoll();
       if (rms < this.opts.levelThreshold) return null;
       this.inSpeech = true;
+      this.opts.onSpeech?.();
       this.epoch += 1;
       this.sentPreview = false;
       this.collected = this.preRoll;
@@ -107,8 +112,12 @@ export class UtteranceDetector {
     const speechSamples = this.speechSamples;
     const pcm = concatPcm(this.collected);
     this.lastEpoch = this.epoch;
+    const tooShort = speechSamples < minSpeech;
     this.reset();
-    if (speechSamples < minSpeech) return null;
+    if (tooShort) {
+      this.opts.onSpeechCancel?.();
+      return null;
+    }
     return pcm;
   }
 }

@@ -59,6 +59,36 @@ test("preview fires once when speech goes quiet", () => {
   expect(previews).toHaveLength(1);
 });
 
+test("speech start is signaled once per utterance", () => {
+  let starts = 0;
+  const vad = detector({ onSpeech: () => starts++ });
+  vad.push(tone(0.2));
+  expect(starts).toBe(1);
+  vad.push(tone(0.001));
+  vad.push(tone(0.2));
+  expect(starts).toBe(1);
+});
+
+test("a short blip releases the speech hold", () => {
+  let cancels = 0;
+  const vad = detector({ silenceMs: 200, onSpeechCancel: () => cancels++ });
+  vad.push(tone(0.2));
+  vad.push(tone(0.2));
+  expect(vad.push(tone(0.001))).toBeNull();
+  expect(vad.push(tone(0.001))).toBeNull();
+  expect(cancels).toBe(1);
+});
+
+test("pausing mid-speech releases the hold", () => {
+  let cancels = 0;
+  const vad = detector({ onSpeechCancel: () => cancels++ });
+  vad.push(tone(0.2));
+  vad.reset(true);
+  expect(cancels).toBe(1);
+  vad.reset(true);
+  expect(cancels).toBe(1);
+});
+
 test("a short blip is dropped", () => {
   const vad = detector();
   expect(vad.push(tone(0.2))).toBeNull();

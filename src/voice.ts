@@ -1,11 +1,14 @@
 import { mkdir, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import { AutoTokenizer, env, StyleTextToSpeech2Model } from "@huggingface/transformers";
 import { KokoroTTS, type GenerateOptions } from "kokoro-js";
 import type { Config } from "./config.ts";
 import { pipeText } from "./bytes.ts";
 
 const MODEL_ID = "onnx-community/Kokoro-82M-v1.0-ONNX";
+const COREML_SUBGRAPH = 0x002;
+const COREML_MLPROGRAM = 0x010;
 
 let voicePromise: Promise<KokoroTTS> | null = null;
 let voiceChain: Promise<unknown> = Promise.resolve();
@@ -21,15 +24,42 @@ function exclusiveVoice<T>(job: () => Promise<T>): Promise<T> {
 
 export function warmVoice(): Promise<KokoroTTS> {
   if (!voicePromise) {
-    voicePromise = KokoroTTS.from_pretrained(MODEL_ID, {
-      dtype: "q8",
-      device: "cpu",
-    }).catch((error: unknown) => {
+    voicePromise = loadVoice().catch((error: unknown) => {
       voicePromise = null;
       throw error;
     });
   }
   return voicePromise;
+}
+
+async function loadVoice(): Promise<KokoroTTS> {
+  try {
+    const tts = await loadKokoro(true);
+    console.log("voice on coreml");
+    return tts;
+  } catch (error) {
+    console.error(error instanceof Error ? error.message : error);
+    console.log("voice on cpu");
+    return loadKokoro(false);
+  }
+}
+
+async function loadKokoro(coreml: boolean): Promise<KokoroTTS> {
+  if (coreml) env.backends.onnx.logSeverityLevel = 3;
+  const model = await StyleTextToSpeech2Model.from_pretrained(MODEL_ID, {
+    dtype: coreml ? "fp16" : "q8",
+    device: "cpu",
+    session_options: coreml
+      ? {
+          executionProviders: [
+            { name: "coreml", coreMlFlags: COREML_SUBGRAPH | COREML_MLPROGRAM },
+            "cpu",
+          ],
+        }
+      : undefined,
+  });
+  const tokenizer = await AutoTokenizer.from_pretrained(MODEL_ID);
+  return new KokoroTTS(model, tokenizer);
 }
 
 export async function synthesize(config: Config, text: string): Promise<Uint8Array> {

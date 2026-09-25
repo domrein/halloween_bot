@@ -13,9 +13,10 @@ test("lowers pitch and restores the length", () => {
   expect(filter).not.toContain("acrusher");
 });
 
-test("thins the voice and adds crackle for the skeleton", () => {
+test("makes the skeleton strain to hold a note", () => {
   const filter = voiceFilter(24000, 1, 0, 0.45);
-  expect(filter).toContain("highpass=f=280");
-  expect(filter).toContain("acrusher=bits=7:mode=log:aa=1:mix=0.45");
-  expect(filter).toContain("tremolo=f=22:d=0.18");
+  expect(filter).toContain("highpass=f=160");
+  expect(filter).toContain("vibrato=f=5.5:d=0.62");
+  expect(filter).toContain("tremolo=f=6:d=0.28");
+  expect(filter).toContain("crystalizer=i=2.5");
 });

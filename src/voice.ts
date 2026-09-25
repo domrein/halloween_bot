@@ -54,8 +54,8 @@ export function voiceFilter(sampleRate: number, pitch: number, echoMs: number, c
     filters.push(`asetrate=${rate}`, `aresample=${sampleRate}`, `atempo=${tempo}`);
   }
   if (crackle > 0) {
-    const mix = Math.min(1, crackle).toFixed(2);
-    filters.push("highpass=f=280", `acrusher=bits=7:mode=log:aa=1:mix=${mix}`, "tremolo=f=22:d=0.18");
+    const wobble = Math.min(0.85, 0.35 + crackle * 0.6).toFixed(2);
+    filters.push("highpass=f=160", `vibrato=f=5.5:d=${wobble}`, "tremolo=f=6:d=0.28", "crystalizer=i=2.5");
   }
   if (echoMs > 0) {
     const first = Math.round(echoMs);

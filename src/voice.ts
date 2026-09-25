@@ -8,6 +8,16 @@ import { pipeText } from "./bytes.ts";
 const MODEL_ID = "onnx-community/Kokoro-82M-v1.0-ONNX";
 
 let voicePromise: Promise<KokoroTTS> | null = null;
+let voiceChain: Promise<unknown> = Promise.resolve();
+
+function exclusiveVoice<T>(job: () => Promise<T>): Promise<T> {
+  const run = voiceChain.then(job, job);
+  voiceChain = run.then(
+    () => undefined,
+    () => undefined,
+  );
+  return run;
+}
 
 export function warmVoice(): Promise<KokoroTTS> {
   if (!voicePromise) {
@@ -23,15 +33,17 @@ export function warmVoice(): Promise<KokoroTTS> {
 }
 
 export async function synthesize(config: Config, text: string): Promise<Uint8Array> {
-  const tts = await warmVoice();
-  if (!(config.voice in tts.voices)) {
-    throw new Error(`Unknown Kokoro voice "${config.voice}".`);
-  }
-  const audio = await tts.generate(text, {
-    voice: config.voice as GenerateOptions["voice"],
-    speed: config.voiceSpeed,
+  return exclusiveVoice(async () => {
+    const tts = await warmVoice();
+    if (!(config.voice in tts.voices)) {
+      throw new Error(`Unknown Kokoro voice "${config.voice}".`);
+    }
+    const audio = await tts.generate(text, {
+      voice: config.voice as GenerateOptions["voice"],
+      speed: config.voiceSpeed,
+    });
+    return new Uint8Array(audio.toWav());
   });
-  return new Uint8Array(audio.toWav());
 }
 
 export function voiceFilter(sampleRate: number, pitch: number, echoMs: number): string | null {
@@ -41,7 +53,11 @@ export function voiceFilter(sampleRate: number, pitch: number, echoMs: number): 
     const tempo = (1 / pitch).toFixed(4);
     filters.push(`asetrate=${rate}`, `aresample=${sampleRate}`, `atempo=${tempo}`);
   }
-  if (echoMs > 0) filters.push(`aecho=0.8:0.88:${Math.round(echoMs)}:0.35`);
+  if (echoMs > 0) {
+    const first = Math.round(echoMs);
+    const second = Math.round(echoMs * 2.2);
+    filters.push(`aecho=0.7:0.92:${first}|${second}:0.5|0.32`);
+  }
   return filters.length > 0 ? filters.join(",") : null;
 }
 
@@ -82,6 +98,34 @@ export async function play(wav: Uint8Array): Promise<void> {
   } finally {
     await rm(wavPath, { force: true });
   }
+}
+
+export function startClip(wav: Uint8Array): { stop: () => void; done: Promise<void> } {
+  const wavPath = join(tmpdir(), `halloween-bot-${process.pid}-${Date.now()}.wav`);
+  let proc: Bun.Subprocess | null = null;
+  let stopped = false;
+  const done = (async () => {
+    await Bun.write(wavPath, wav);
+    if (stopped) {
+      await rm(wavPath, { force: true });
+      return;
+    }
+    proc = Bun.spawn(["afplay", wavPath], { stdout: "ignore", stderr: "pipe", stdin: "ignore" });
+    const stderr = pipeText(proc.stderr);
+    const code = await proc.exited;
+    await rm(wavPath, { force: true });
+    if (!stopped && code !== 0 && code !== null) {
+      const err = await stderr;
+      if (err) throw new Error(err);
+    }
+  })();
+  return {
+    stop: () => {
+      stopped = true;
+      proc?.kill();
+    },
+    done,
+  };
 }
 
 export async function speak(config: Config, text: string): Promise<void> {

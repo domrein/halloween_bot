@@ -42,10 +42,10 @@ export async function firstSpokenSentence(config: Config, memory: string, signal
       { role: "system", content: `${character.trim()}\n\n${SPEAK_RULE}` },
       {
         role: "user",
-        content: `Events in chronological order, oldest first:\n${memory}\n\nContinue this conversation from that history. Answer the latest heard line in a way that follows what was already said. One short sentence.`,
+        content: `Events in chronological order, oldest first:\n${memory}\n\nReply to the last heard line. Do not repeat it. One short sentence.`,
       },
     ],
-    options: { temperature: 0.8, num_predict: 40, num_ctx: 1024 },
+    options: { temperature: 0.4, num_predict: 40, num_ctx: 1024 },
   });
   const sentence = firstSentence(content) ?? unfinishedLine(content);
   if (!sentence) throw new Error("Ollama returned an empty reply");

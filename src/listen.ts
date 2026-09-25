@@ -10,12 +10,13 @@ export class Listener {
   private proc: Bun.Subprocess | null = null;
   private detector: UtteranceDetector;
   private paused = false;
+  private deaf = false;
   private stopping = false;
   private failure: Error | null = null;
   private stderr = { current: () => "", finished: Promise.resolve("") };
   private heardAudio = false;
-  private queue: Int16Array[] = [];
-  private waiters: Array<(utterance: Int16Array | null) => void> = [];
+  private queue: Heard[] = [];
+  private waiters: Array<(utterance: Heard | null) => void> = [];
   private pending = new Int16Array();
   private oddByte = new Uint8Array();
   private levelFrames = 0;
@@ -29,8 +30,14 @@ export class Listener {
       maxSpeechMs: config.maxSpeechMs,
       levelThreshold: config.levelThreshold,
       preRollMs: 300,
+      previewDelayMs: 280,
+      onPreview: (pcm, epoch) => this.onPreview?.(epoch, pcm),
+      onPreviewCancel: () => this.onPreviewCancel?.(),
     });
   }
+
+  onPreview: ((epoch: number, pcm: Int16Array) => void) | null = null;
+  onPreviewCancel: (() => void) | null = null;
 
   pause(): void {
     this.paused = true;
@@ -40,6 +47,15 @@ export class Listener {
 
   resume(): void {
     this.paused = false;
+  }
+
+  /** Keep the current pause timing, but ignore the mic so speaker playback cannot cancel it. */
+  deafen(): void {
+    this.deaf = true;
+  }
+
+  undeafen(): void {
+    this.deaf = false;
   }
 
   async start(): Promise<void> {
@@ -94,7 +110,7 @@ export class Listener {
     this.finish(null);
   }
 
-  async *utterances(): AsyncGenerator<Int16Array> {
+  async *utterances(): AsyncGenerator<Heard> {
     while (!this.stopping) {
       if (this.failure) throw this.failure;
       const next = await this.nextUtterance();
@@ -106,13 +122,13 @@ export class Listener {
     }
   }
 
-  private nextUtterance(): Promise<Int16Array | null> {
+  private nextUtterance(): Promise<Heard | null> {
     const queued = this.queue.shift();
     if (queued) return Promise.resolve(queued);
     return new Promise((resolve) => this.waiters.push(resolve));
   }
 
-  private finish(utterance: Int16Array | null): void {
+  private finish(utterance: Heard | null): void {
     const waiter = this.waiters.shift();
     if (waiter) {
       waiter(utterance);
@@ -178,8 +194,9 @@ export class Listener {
       this.levelFrames = 0;
       this.levelSum = 0;
     }
-    const utterance = this.detector.push(frame);
-    if (utterance) this.finish(utterance);
+    const heard = this.deaf ? new Int16Array(frame.length) : frame;
+    const utterance = this.detector.push(heard);
+    if (utterance) this.finish({ pcm: utterance, epoch: this.detector.lastEpoch });
   }
 }
 
@@ -196,6 +213,8 @@ function concatPcm(a: Int16Array, b: Int16Array) {
   out.set(b, a.length);
   return out;
 }
+
+export type Heard = { pcm: Int16Array; epoch: number };
 
 function micError(input: string, detail: string): string {
   const tail = detail ? ` ${detail}` : "";

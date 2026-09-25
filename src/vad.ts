@@ -5,6 +5,9 @@ export type VadOptions = {
   maxSpeechMs: number;
   levelThreshold: number;
   preRollMs: number;
+  previewDelayMs?: number;
+  onPreview?: (pcm: Int16Array, epoch: number) => void;
+  onPreviewCancel?: () => void;
 };
 
 /** Root-mean-square level in the range 0..1. */
@@ -25,6 +28,9 @@ export class UtteranceDetector {
   private collected: Int16Array[] = [];
   private speechSamples = 0;
   private silenceSamples = 0;
+  private epoch = 0;
+  private sentPreview = false;
+  lastEpoch = 0;
 
   constructor(private readonly opts: VadOptions) {}
 
@@ -35,6 +41,7 @@ export class UtteranceDetector {
     this.collected = [];
     this.speechSamples = 0;
     this.silenceSamples = 0;
+    this.sentPreview = false;
   }
 
   push(chunk: Int16Array): Int16Array | null {
@@ -47,6 +54,8 @@ export class UtteranceDetector {
       this.trimPreRoll();
       if (rms < this.opts.levelThreshold) return null;
       this.inSpeech = true;
+      this.epoch += 1;
+      this.sentPreview = false;
       this.collected = this.preRoll;
       this.preRoll = [];
       this.preRollSamples = 0;
@@ -57,12 +66,26 @@ export class UtteranceDetector {
 
     this.collected.push(chunk);
     if (rms >= this.opts.levelThreshold) {
+      if (this.silenceSamples > 0) {
+        this.epoch += 1;
+        this.sentPreview = false;
+        this.opts.onPreviewCancel?.();
+      }
       this.speechSamples += chunk.length;
       this.silenceSamples = 0;
     } else {
       this.silenceSamples += chunk.length;
+      this.maybePreview();
     }
     return this.finishIfReady();
+  }
+
+  private maybePreview(): void {
+    const minSpeech = msToSamples(this.opts.minSpeechMs, this.opts.sampleRate);
+    const previewDelay = msToSamples(this.opts.previewDelayMs ?? 0, this.opts.sampleRate);
+    if (this.sentPreview || this.speechSamples < minSpeech || this.silenceSamples < previewDelay) return;
+    this.sentPreview = true;
+    this.opts.onPreview?.(concatPcm(this.collected), this.epoch);
   }
 
   private trimPreRoll(): void {
@@ -83,6 +106,7 @@ export class UtteranceDetector {
     const minSpeech = msToSamples(this.opts.minSpeechMs, this.opts.sampleRate);
     const speechSamples = this.speechSamples;
     const pcm = concatPcm(this.collected);
+    this.lastEpoch = this.epoch;
     this.reset();
     if (speechSamples < minSpeech) return null;
     return pcm;

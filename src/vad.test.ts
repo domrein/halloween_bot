@@ -36,6 +36,29 @@ test("speech followed by silence is returned once", () => {
   expect(utterance!.length).toBeGreaterThan(4 * chunkSamples);
 });
 
+test("preview waits until the last word has landed", () => {
+  const previews: number[] = [];
+  const vad = detector({
+    previewDelayMs: 300,
+    onPreview: () => previews.push(1),
+  });
+  for (let i = 0; i < 4; i++) vad.push(tone(0.2));
+  vad.push(tone(0.001));
+  expect(previews).toHaveLength(0);
+  for (let i = 0; i < 3; i++) vad.push(tone(0.001));
+  expect(previews).toHaveLength(1);
+});
+
+test("preview fires once when speech goes quiet", () => {
+  const previews: number[] = [];
+  const vad = detector({
+    onPreview: (_pcm, epoch) => previews.push(epoch),
+  });
+  for (let i = 0; i < 4; i++) vad.push(tone(0.2));
+  for (let i = 0; i < 8; i++) vad.push(tone(0.001));
+  expect(previews).toHaveLength(1);
+});
+
 test("a short blip is dropped", () => {
   const vad = detector();
   expect(vad.push(tone(0.2))).toBeNull();

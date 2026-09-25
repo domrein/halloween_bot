@@ -1,5 +1,5 @@
 import { expect, test } from "bun:test";
-import { loadConfig } from "./config.ts";
+import { characterArg, loadConfig } from "./config.ts";
 
 test("config.json loads", async () => {
   const config = await loadConfig();
@@ -9,4 +9,10 @@ test("config.json loads", async () => {
   expect(config.delays.length).toBeGreaterThan(0);
   expect(config.roleFile).toBe("prompts/ghost.md");
   expect(config.levelThreshold).toBeGreaterThan(0);
+});
+
+test("character flag overrides config.json", () => {
+  expect(characterArg(["bun", "src/index.ts", "--character=scientist"])).toBe("scientist");
+  expect(characterArg(["bun", "src/index.ts", "--character", "witch"])).toBe("witch");
+  expect(characterArg(["bun", "src/index.ts"])).toBeNull();
 });

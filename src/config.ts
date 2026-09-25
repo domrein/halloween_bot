@@ -56,7 +56,24 @@ const stringFields = [
   "character",
 ] as const;
 
-export async function loadConfig(): Promise<Config> {
+export function characterArg(argv: string[]): string | null {
+  for (let i = 0; i < argv.length; i++) {
+    const arg = argv[i];
+    if (arg === "--character") {
+      const value = argv[i + 1];
+      if (!value || value.startsWith("--")) throw new Error("Pass a name after --character");
+      return value;
+    }
+    if (arg.startsWith("--character=")) {
+      const value = arg.slice("--character=".length);
+      if (!value) throw new Error("Pass a name with --character=name");
+      return value;
+    }
+  }
+  return null;
+}
+
+export async function loadConfig(argv: string[] = Bun.argv): Promise<Config> {
   const path = `${root}/config.json`;
   let raw: string;
   try {
@@ -79,9 +96,11 @@ export async function loadConfig(): Promise<Config> {
       throw new Error(`config.json ${key} must be a number`);
     }
   }
-  const character = getCharacter(String(record.character));
+  const chosen = characterArg(argv) ?? String(record.character);
+  const character = getCharacter(chosen);
   const config = {
     ...(record as Config),
+    character: chosen,
     voice: character.voice,
     voiceSpeed: character.voiceSpeed,
     voicePitch: character.voicePitch,

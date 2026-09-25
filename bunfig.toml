@@ -1,0 +1,2 @@
+[install]
+trustedDependencies = ["onnxruntime-node", "protobufjs"]

@@ -1,0 +1,21 @@
+{
+  "name": "halloween-bot",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "start": "bun src/index.ts",
+    "check": "bun src/check.ts",
+    "devices": "bun src/devices.ts",
+    "test": "bun test"
+  },
+  "dependencies": {
+    "kokoro-js": "^1.2.1"
+  },
+  "devDependencies": {
+    "@types/bun": "latest"
+  },
+  "trustedDependencies": [
+    "onnxruntime-node",
+    "protobufjs"
+  ]
+}

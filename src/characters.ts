@@ -32,9 +32,9 @@ export const characters = {
   },
   scientist: {
     voice: "bm_fable",
-    voiceSpeed: 0.86,
+    voiceSpeed: 1,
     voicePitch: 0.74,
-    voiceEchoMs: 150,
+    voiceEchoMs: 70,
     voiceCrackle: 0.45,
     delays: ["Indubitably.", "Most curious.", "One moment."],
     quickLines: [

@@ -66,10 +66,10 @@ Talk to the webcam indoors before moving the Mac to the door. The terminal print
 
 Every few seconds it prints a mic level. Quiet room level should sit below `levelThreshold`, and a normal speaking voice should sit above it. Raise the threshold if wind or the street keeps waking it. Lower it if the ghost ignores people.
 
-`prompts/ghost.md` is the character. Edit that file to make it a skeleton instead.
+`character` in `config.json` picks who is on the porch: `ghost`, `scientist`, or `witch`. A character is a voice, delay phrases, and a role in `prompts/`.
 
 The porch light needs to be on, or the photo is useless. Aim the speaker toward the walk and keep the mic off to the side of the speaker. While the ghost is thinking or talking, microphone samples are discarded, plus a short tail after playback, so it does not answer itself or work through a backlog. Speech that arrives during a reply is ignored.
 
 ## Config
 
-`config.json` holds device indexes, the Ollama model, the Kokoro voice (`bm_george` is a low British male), silence timing, and the level threshold. Replies are one short sentence, spoken as soon as that sentence is ready. The speaker remembers the last 50 events: glances, what was heard, and what it said.
+`config.json` holds the character, device indexes, the Ollama models, silence timing, and the level threshold. Replies are one short sentence, spoken as soon as that sentence is ready. The speaker remembers the last 50 events: glances, what was heard, and what it said.

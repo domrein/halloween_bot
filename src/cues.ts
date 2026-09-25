@@ -2,17 +2,9 @@ import type { Config } from "./config.ts";
 import { colorVoice, synthesize } from "./voice.ts";
 import { encodeWav } from "./wav.ts";
 
-type Pattern = { test: RegExp; say: string };
+import type { QuickLine } from "./characters.ts";
 
-const DELAY_LINES = ["Well.", "Let me think.", "Hmmmmm."];
-
-const PATTERNS: Pattern[] = [
-  { test: /^(?:hello|hi|hey)(?: there)?$/, say: "Hi there!" },
-  { test: /^(?:trick|drink) or treat$/, say: "Happy Halloween!" },
-  { test: /^how are you(?: doing)?$/, say: "I'm hauntingly well!" },
-];
-
-export type CannedLine = Pattern & { wav: Uint8Array };
+export type CannedLine = QuickLine & { wav: Uint8Array };
 
 export type Cues = {
   fills: Uint8Array[];
@@ -43,11 +35,11 @@ export async function prepareCues(config: Config): Promise<Cues> {
   for (const durationMs of [1200, 2000]) {
     fills.push(await colorVoice(config, humWav(durationMs)));
   }
-  for (const line of DELAY_LINES) {
+  for (const line of config.delays) {
     fills.push(await colorVoice(config, await synthesize(config, line)));
   }
   const lines: CannedLine[] = [];
-  for (const pattern of PATTERNS) {
+  for (const pattern of config.quickLines) {
     lines.push({ ...pattern, wav: await colorVoice(config, await synthesize(config, pattern.say)) });
   }
   return { fills, lines };

@@ -29,6 +29,7 @@ function shutdown(): void {
 process.on("SIGINT", shutdown);
 process.on("SIGTERM", shutdown);
 
+console.log(`character ${config.character} (${config.voice})`);
 console.log(`camera ${config.cameraDevice}`);
 console.log(`microphone ${config.micDevice}`);
 try {

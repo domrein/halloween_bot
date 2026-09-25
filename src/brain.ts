@@ -34,7 +34,7 @@ export async function describeScene(config: Config, frame: Uint8Array, signal: A
 }
 
 export async function firstSpokenSentence(config: Config, memory: string, signal: AbortSignal): Promise<string> {
-  const character = await Bun.file(`${root}/prompts/ghost.md`).text();
+  const character = await Bun.file(`${root}/${config.roleFile}`).text();
   const content = await chat(config, config.ollamaReplyModel, signal, {
     stream: true,
     stopAtSentence: true,

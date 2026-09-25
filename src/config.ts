@@ -1,3 +1,4 @@
+import { getCharacter, type QuickLine } from "./characters.ts";
 import { root } from "./paths.ts";
 
 export type Config = {
@@ -13,10 +14,14 @@ export type Config = {
   ollamaUrl: string;
   ollamaGlanceModel: string;
   ollamaReplyModel: string;
+  character: string;
   voice: string;
   voiceSpeed: number;
   voicePitch: number;
   voiceEchoMs: number;
+  delays: string[];
+  quickLines: QuickLine[];
+  roleFile: string;
   sampleRate: number;
   silenceMs: number;
   minSpeechMs: number;
@@ -30,9 +35,6 @@ const numberFields = [
   "frameHeight",
   "frameRate",
   "whisperPort",
-  "voiceSpeed",
-  "voicePitch",
-  "voiceEchoMs",
   "sampleRate",
   "silenceMs",
   "minSpeechMs",
@@ -50,7 +52,7 @@ const stringFields = [
   "ollamaUrl",
   "ollamaGlanceModel",
   "ollamaReplyModel",
-  "voice",
+  "character",
 ] as const;
 
 export async function loadConfig(): Promise<Config> {
@@ -76,7 +78,17 @@ export async function loadConfig(): Promise<Config> {
       throw new Error(`config.json ${key} must be a number`);
     }
   }
-  const config = record as Config;
+  const character = getCharacter(String(record.character));
+  const config = {
+    ...(record as Config),
+    voice: character.voice,
+    voiceSpeed: character.voiceSpeed,
+    voicePitch: character.voicePitch,
+    voiceEchoMs: character.voiceEchoMs,
+    delays: [...character.delays],
+    quickLines: character.quickLines.map((line) => ({ ...line })),
+    roleFile: character.roleFile,
+  };
   if (config.levelThreshold <= 0 || config.levelThreshold >= 1) {
     throw new Error("config.json levelThreshold must be between 0 and 1");
   }

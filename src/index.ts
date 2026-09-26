@@ -43,12 +43,18 @@ try {
   console.error(error instanceof Error ? error.message : error);
   process.exit(1);
 }
-console.log("loading voice, whisper, camera, and microphone");
+console.log("starting whisper");
+try {
+  await startWhisper(config);
+} catch (error) {
+  console.error(error instanceof Error ? error.message : error);
+  process.exit(1);
+}
+console.log("loading voice, camera, and microphone");
 let cues: Cues | null = null;
 const voiceReady = warmVoice().then(async () => {
   cues = await prepareCues(config);
 });
-const whisperReady = startWhisper(config);
 const modelsReady = warmModels(config);
 try {
   await camera.start();
@@ -58,7 +64,7 @@ try {
   camera.stop();
 }
 try {
-  await Promise.all([voiceReady, whisperReady, modelsReady, listener.start()]);
+  await Promise.all([voiceReady, modelsReady, listener.start()]);
 } catch (error) {
   console.error(error instanceof Error ? error.message : error);
   stopWhisper();

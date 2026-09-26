@@ -25,6 +25,7 @@ class WhisperServer {
   private proc: Bun.Subprocess | null = null;
   private owned = false;
   private stderr = { current: () => "", finished: Promise.resolve("") };
+  private stdout = { current: () => "", finished: Promise.resolve("") };
 
   constructor(private readonly config: Config) {}
 
@@ -44,20 +45,23 @@ class WhisperServer {
         "en",
         "-nt",
       ],
-      { stdout: "ignore", stderr: "pipe", stdin: "ignore" },
+      { stdout: "pipe", stderr: "pipe", stdin: "ignore" },
     );
     this.owned = true;
     this.stderr = followText(this.proc.stderr);
-    const deadline = Date.now() + 30_000;
+    this.stdout = followText(this.proc.stdout);
+    const deadline = Date.now() + 90_000;
     while (Date.now() < deadline) {
       if (await this.reachable()) return;
       if (this.proc.exitCode !== null) {
-        throw new Error(`Whisper server exited. ${await this.stderr.finished}`.trim());
+        throw new Error(`Whisper server exited. ${logTail(await this.stderr.finished)}`.trim());
       }
       await Bun.sleep(200);
     }
     this.stop();
-    throw new Error(`Whisper server did not start on port ${this.config.whisperPort}. ${this.stderr.current()}`.trim());
+    throw new Error(
+      `Whisper server did not open port ${this.config.whisperPort} in time. ${logTail(this.logs())}`.trim(),
+    );
   }
 
   async transcribe(pcm: Int16Array, sampleRate: number): Promise<string> {
@@ -98,6 +102,10 @@ class WhisperServer {
     return `http://127.0.0.1:${this.config.whisperPort}`;
   }
 
+  private logs(): string {
+    return [this.stdout.current(), this.stderr.current()].filter(Boolean).join("\n");
+  }
+
   private async reachable(): Promise<boolean> {
     try {
       const response = await fetch(this.url(), { signal: AbortSignal.timeout(500) });
@@ -106,4 +114,10 @@ class WhisperServer {
       return false;
     }
   }
+}
+
+function logTail(text: string): string {
+  const trimmed = text.trim();
+  if (trimmed.length <= 400) return trimmed;
+  return trimmed.slice(-400);
 }

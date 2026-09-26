@@ -34,7 +34,7 @@ export const characters = {
     voice: "bm_fable",
     voiceSpeed: 1,
     voicePitch: 0.74,
-    voiceEchoMs: 70,
+    voiceEchoMs: 30,
     voiceCrackle: 0.7,
     delays: ["Indubitably.", "Most curious.", "One moment."],
     quickLines: [

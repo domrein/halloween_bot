@@ -6,7 +6,8 @@
     "start": "bun src/index.ts",
     "check": "bun src/check.ts",
     "devices": "bun src/devices.ts",
-    "test": "bun test"
+    "test": "bun test",
+    "bench": "bun src/bench.ts"
   },
   "dependencies": {
     "kokoro-js": "^1.2.1"

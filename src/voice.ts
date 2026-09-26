@@ -33,33 +33,53 @@ export function warmVoice(): Promise<KokoroTTS> {
 }
 
 async function loadVoice(): Promise<KokoroTTS> {
-  try {
-    const tts = await loadKokoro(true);
-    console.log("voice on coreml");
-    return tts;
-  } catch (error) {
-    console.error(error instanceof Error ? error.message : error);
-    console.log("voice on cpu");
-    return loadKokoro(false);
-  }
+  console.log("voice on cpu");
+  return loadKokoro(false);
 }
 
-async function loadKokoro(coreml: boolean): Promise<KokoroTTS> {
+export function openVoice(device: "cpu" | "coreml", threads = 0): Promise<KokoroTTS> {
+  return loadKokoro(device === "coreml", threads);
+}
+
+export async function timedVoice(
+  config: Config,
+  tts: KokoroTTS,
+  text: string,
+): Promise<{ synthesizeMs: number; colorMs: number; wav: Uint8Array }> {
+  const started = performance.now();
+  const audio = await tts.generate(text, {
+    voice: config.voice as GenerateOptions["voice"],
+    speed: config.voiceSpeed,
+  });
+  const synthesizeMs = performance.now() - started;
+  const colorStarted = performance.now();
+  const wav = await colorVoice(config, new Uint8Array(audio.toWav()));
+  return { synthesizeMs, colorMs: performance.now() - colorStarted, wav };
+}
+
+async function loadKokoro(coreml: boolean, threads = 0): Promise<KokoroTTS> {
   if (coreml) env.backends.onnx.logSeverityLevel = 3;
   const model = await StyleTextToSpeech2Model.from_pretrained(MODEL_ID, {
-    dtype: coreml ? "fp16" : "q8",
+    dtype: "fp16",
     device: "cpu",
-    session_options: coreml
-      ? {
-          executionProviders: [
-            { name: "coreml", coreMlFlags: COREML_SUBGRAPH | COREML_MLPROGRAM },
-            "cpu",
-          ],
-        }
-      : undefined,
+    session_options: {
+      ...(threads > 0 ? { intraOpNumThreads: threads, interOpNumThreads: 1 } : {}),
+      ...(coreml
+        ? {
+            executionProviders: [
+              { name: "coreml" as const, coreMlFlags: COREML_SUBGRAPH | COREML_MLPROGRAM },
+              "cpu" as const,
+            ],
+          }
+        : {}),
+    },
   });
   const tokenizer = await AutoTokenizer.from_pretrained(MODEL_ID);
   return new KokoroTTS(model, tokenizer);
+}
+
+export async function renderVoice(config: Config, text: string): Promise<Uint8Array> {
+  return colorVoice(config, await synthesize(config, text));
 }
 
 export async function synthesize(config: Config, text: string): Promise<Uint8Array> {

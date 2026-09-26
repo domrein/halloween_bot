@@ -6,8 +6,10 @@ export type VadOptions = {
   levelThreshold: number;
   preRollMs: number;
   previewDelayMs?: number;
+  partialDelayMs?: number;
   onSpeech?: () => void;
   onSpeechCancel?: () => void;
+  onPartial?: (pcm: Int16Array, epoch: number) => void;
   onPreview?: (pcm: Int16Array, epoch: number) => void;
   onPreviewCancel?: () => void;
 };
@@ -32,6 +34,7 @@ export class UtteranceDetector {
   private silenceSamples = 0;
   private epoch = 0;
   private sentPreview = false;
+  private sentPartial = false;
   lastEpoch = 0;
 
   constructor(private readonly opts: VadOptions) {}
@@ -45,6 +48,7 @@ export class UtteranceDetector {
     this.speechSamples = 0;
     this.silenceSamples = 0;
     this.sentPreview = false;
+    this.sentPartial = false;
     if (cancel) this.opts.onSpeechCancel?.();
   }
 
@@ -66,6 +70,7 @@ export class UtteranceDetector {
       this.preRollSamples = 0;
       this.speechSamples = chunk.length;
       this.silenceSamples = 0;
+      this.maybePartial();
       return this.finishIfReady();
     }
 
@@ -74,15 +79,26 @@ export class UtteranceDetector {
       if (this.silenceSamples > 0) {
         this.epoch += 1;
         this.sentPreview = false;
+        this.sentPartial = false;
         this.opts.onPreviewCancel?.();
       }
       this.speechSamples += chunk.length;
       this.silenceSamples = 0;
+      this.maybePartial();
     } else {
       this.silenceSamples += chunk.length;
       this.maybePreview();
     }
     return this.finishIfReady();
+  }
+
+  private maybePartial(): void {
+    if (this.sentPartial) return;
+    const minSpeech = msToSamples(this.opts.minSpeechMs, this.opts.sampleRate);
+    const partialDelay = msToSamples(this.opts.partialDelayMs ?? this.opts.minSpeechMs, this.opts.sampleRate);
+    if (this.speechSamples < Math.max(minSpeech, partialDelay)) return;
+    this.sentPartial = true;
+    this.opts.onPartial?.(concatPcm(this.collected), this.epoch);
   }
 
   private maybePreview(): void {

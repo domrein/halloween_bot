@@ -59,6 +59,17 @@ test("preview fires once when speech goes quiet", () => {
   expect(previews).toHaveLength(1);
 });
 
+test("a partial fires once speech is long enough", () => {
+  let partials = 0;
+  const vad = detector({ minSpeechMs: 200, onPartial: () => partials++ });
+  vad.push(tone(0.2));
+  expect(partials).toBe(0);
+  vad.push(tone(0.2));
+  expect(partials).toBe(1);
+  vad.push(tone(0.2));
+  expect(partials).toBe(1);
+});
+
 test("speech start is signaled once per utterance", () => {
   let starts = 0;
   const vad = detector({ onSpeech: () => starts++ });

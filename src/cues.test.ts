@@ -1,5 +1,5 @@
 import { expect, test } from "bun:test";
-import { matchCanned, nextFill, normalizeHeard, type CannedLine } from "./cues.ts";
+import { matchCanned, nextFill, normalizeHeard, sameUtterance, type CannedLine } from "./cues.ts";
 
 const lines: CannedLine[] = [
   { test: /^(?:hello|hi|hey)(?: there)?$/, say: "Hi there!", wav: new Uint8Array() },
@@ -17,6 +17,13 @@ test("rotates delay sounds without repeating the last one", () => {
   expect(nextFill(5, -1)).toBe(0);
   expect(nextFill(5, 0)).toBe(1);
   expect(nextFill(5, 4)).toBe(0);
+});
+
+test("keeps an early transcript that already heard the phrase", () => {
+  expect(sameUtterance("Why is it curious", "Why is it curious?")).toBe(true);
+  expect(sameUtterance("Why is it", "Why is it curious?")).toBe(true);
+  expect(sameUtterance("Why is", "Why is it curious?")).toBe(false);
+  expect(sameUtterance("Testing", "Testing one two three four")).toBe(false);
 });
 
 test("leaves real questions for the model", () => {

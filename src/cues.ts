@@ -11,6 +11,17 @@ export type Cues = {
   lines: CannedLine[];
 };
 
+/** The early transcript is the same phrase, or a slightly shorter version of it. */
+export function sameUtterance(early: string, final: string): boolean {
+  const a = normalizeHeard(early);
+  const b = normalizeHeard(final);
+  if (!a || !b) return false;
+  if (a === b) return true;
+  if (!b.startsWith(`${a} `) || a.split(" ").length < 3) return false;
+  const extra = b.slice(a.length).trim().split(" ").filter(Boolean);
+  return extra.length <= 2;
+}
+
 export function normalizeHeard(text: string): string {
   return text
     .toLowerCase()

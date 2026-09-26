@@ -31,8 +31,10 @@ export class Listener {
       levelThreshold: config.levelThreshold,
       preRollMs: 300,
       previewDelayMs: 280,
+      partialDelayMs: 700,
       onSpeech: () => this.onSpeech?.(),
       onSpeechCancel: () => this.onSpeechCancel?.(),
+      onPartial: (pcm, epoch) => this.onPartial?.(epoch, pcm),
       onPreview: (pcm, epoch) => this.onPreview?.(epoch, pcm),
       onPreviewCancel: () => this.onPreviewCancel?.(),
     });
@@ -40,6 +42,7 @@ export class Listener {
 
   onSpeech: (() => void) | null = null;
   onSpeechCancel: (() => void) | null = null;
+  onPartial: ((epoch: number, pcm: Int16Array) => void) | null = null;
   onUtteranceDrop: (() => void) | null = null;
   onPreview: ((epoch: number, pcm: Int16Array) => void) | null = null;
   onPreviewCancel: (() => void) | null = null;

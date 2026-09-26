@@ -1,12 +1,13 @@
 import { firstSpokenSentence, warmModels } from "./brain.ts";
+import { firstSpokenChunk } from "./sentence.ts";
 import { Camera } from "./camera.ts";
 import { loadConfig } from "./config.ts";
 import { ContextLog } from "./context.ts";
-import { matchCanned, nextFill, normalizeHeard, prepareCues, type Cues } from "./cues.ts";
+import { matchCanned, nextFill, prepareCues, sameUtterance, type Cues } from "./cues.ts";
 import { Glances } from "./glance.ts";
 import { Listener } from "./listen.ts";
 import { preflight } from "./preflight.ts";
-import { colorVoice, play, startClip, synthesize, warmVoice } from "./voice.ts";
+import { play, renderVoice, startClip, warmVoice } from "./voice.ts";
 import { startWhisper, stopWhisper, transcribe } from "./whisper.ts";
 
 const config = await loadConfig();
@@ -92,18 +93,18 @@ process.on("uncaughtException", (error) => {
   process.exit(1);
 });
 
-type Guess = {
+type Pending = {
   epoch: number;
-  text: string;
-  cannedWav: Uint8Array | null;
-  cannedSay: string | null;
-  reply: Promise<string> | null;
+  text: Promise<string>;
+  line: Promise<string>;
+  opening: Promise<Uint8Array | null>;
+  rest: Promise<Uint8Array | null>;
   abort: AbortController;
 };
 
 let turn: Promise<void> | null = null;
-let guess: Promise<Guess | null> | null = null;
-let guessAbort: AbortController | null = null;
+let pending: Pending | null = null;
+let guessGen = 0;
 let breath: { stop: () => void; done: Promise<void> } | null = null;
 let humPlayedAt = 0;
 let fillIndex = -1;
@@ -140,20 +141,89 @@ async function finishBreath(): Promise<void> {
   listener.undeafen();
 }
 
-function currentGuess(): Promise<Guess | null> | null {
-  return guess;
-}
-
 function currentCues(): Cues | null {
   return cues;
 }
+
+function livePending(): Pending | null {
+  return pending;
+}
+
+function dropPending(): void {
+  pending?.abort.abort();
+  pending = null;
+  guessGen += 1;
+}
+
+function renderCaught(text: string, signal: AbortSignal): Promise<Uint8Array | null> {
+  if (!text || signal.aborted) return Promise.resolve(null);
+  return renderVoice(config, text).catch((error: unknown) => {
+    if (signal.aborted || isAbort(error)) return null;
+    throw error;
+  });
+}
+
+function beginFromText(epoch: number, heard: Promise<string>, abort: AbortController): Pending {
+  let openingJob: Promise<Uint8Array | null> | null = null;
+  const line = heard.then(async (text) => {
+    if (abort.signal.aborted || !text || !cues) return "";
+    const canned = matchCanned(cues.lines, text);
+    if (canned) {
+      openingJob = Promise.resolve(canned.wav);
+      return canned.say;
+    }
+    return firstSpokenSentence(config, `${context.prompt()}\nheard: ${text}`, abort.signal, (now) => {
+      if (openingJob || abort.signal.aborted) return;
+      openingJob = renderCaught(now, abort.signal);
+    }).catch((error: unknown) => {
+      if (abort.signal.aborted || isAbort(error)) return "";
+      throw error;
+    });
+  });
+  const opening = line.then(async (spoken) => {
+    if (abort.signal.aborted || !spoken) return null;
+    if (!openingJob) {
+      const chunk = firstSpokenChunk(spoken);
+      openingJob = renderCaught(chunk.now, abort.signal);
+    }
+    return openingJob;
+  });
+  const rest = line.then(async (spoken) => {
+    if (abort.signal.aborted || !spoken) return null;
+    const chunk = firstSpokenChunk(spoken);
+    if (!chunk.later) return null;
+    await opening.catch(() => null);
+    return renderCaught(chunk.later, abort.signal);
+  });
+  line.catch((error: unknown) => {
+    if (!abort.signal.aborted) console.error(error instanceof Error ? error.message : error);
+  });
+  return { epoch, text: heard, line, opening, rest, abort };
+}
+
+function beginFromPcm(epoch: number, pcm: Int16Array): void {
+  const gen = ++guessGen;
+  const abort = new AbortController();
+  const heard = transcribe(config, pcm).then((text) => (abort.signal.aborted ? "" : text));
+  const next = beginFromText(epoch, heard, abort);
+  if (guessGen !== gen) {
+    abort.abort();
+    return;
+  }
+  pending = next;
+}
+
+listener.onPartial = (epoch, pcm) => {
+  if (turn || stopping || !cues || pending) return;
+  beginFromPcm(epoch, pcm);
+};
 
 listener.onPreview = (epoch, pcm) => {
   if (turn || stopping || !cues) return;
   cancelFillTimer();
   fillTimer = setTimeout(() => {
     fillTimer = null;
-    if (turn || stopping || !cues || breath || Date.now() - humPlayedAt <= 4_000) return;
+    if (turn || stopping || !cues || breath || pending || Date.now() - humPlayedAt <= 4_000) return;
     fillIndex = nextFill(cues.fills.length, fillIndex);
     const fill = cues.fills[fillIndex];
     if (!fill) return;
@@ -161,41 +231,37 @@ listener.onPreview = (epoch, pcm) => {
     listener.deafen();
     breath = startClip(fill);
   }, FILL_DELAY_MS);
-  const abort = new AbortController();
-  guessAbort = abort;
-  guess = (async () => {
-    const text = await transcribe(config, pcm);
-    if (abort.signal.aborted || !text) return null;
-    const canned = matchCanned(cues!.lines, text);
-    const reply = canned
-      ? null
-      : firstSpokenSentence(config, `${context.prompt()}\nheard: ${text}`, abort.signal).catch((error: unknown) => {
-          if (abort.signal.aborted || isAbort(error)) return "";
-          throw error;
-        });
-    return {
-      epoch,
-      text,
-      cannedWav: canned?.wav ?? null,
-      cannedSay: canned?.say ?? null,
-      reply,
-      abort,
-    };
-  })().catch((error: unknown) => {
-    if (!abort.signal.aborted) console.error(error instanceof Error ? error.message : error);
-    return null;
-  });
+  const gen = ++guessGen;
+  void transcribe(config, pcm)
+    .then(async (heard) => {
+      if (turn || guessGen !== gen || !heard) return;
+      const current = pending;
+      if (current && current.epoch === epoch) {
+        const early = await current.text;
+        if (guessGen !== gen) return;
+        if (sameUtterance(early, heard)) return;
+        current.abort.abort();
+      }
+      const abort = new AbortController();
+      pending = beginFromText(epoch, Promise.resolve(heard), abort);
+    })
+    .catch((error: unknown) => {
+      if (!isAbort(error)) console.error(error instanceof Error ? error.message : error);
+    });
 };
 
 listener.onPreviewCancel = () => {
   cancelFillTimer();
   stopBreath();
-  guessAbort?.abort();
-  guessAbort = null;
-  guess = null;
+  dropPending();
 };
 
-async function respond(heardTiming: string, line: string, readyWav: Uint8Array | null): Promise<void> {
+async function respond(
+  heardTiming: string,
+  line: string,
+  readyWav: Uint8Array | null,
+  rest: Promise<Uint8Array | null> | null,
+): Promise<void> {
   let released = false;
   const releaseGlance = () => {
     if (released) return;
@@ -213,7 +279,9 @@ async function respond(heardTiming: string, line: string, readyWav: Uint8Array |
     let wav = readyWav;
     try {
       if (!wav) {
-        wav = await colorVoice(config, await synthesize(config, line));
+        const chunk = firstSpokenChunk(line);
+        wav = await renderVoice(config, chunk.now);
+        if (chunk.later) rest = renderVoice(config, chunk.later).catch(() => null);
         timing.push(`voice ${elapsed(voiceStarted)}`);
       }
     } catch (error) {
@@ -221,11 +289,13 @@ async function respond(heardTiming: string, line: string, readyWav: Uint8Array |
       console.error(error instanceof Error ? error.message : error);
       return;
     }
-    releaseGlance();
     listener.pause();
     try {
       const playStarted = performance.now();
       await play(wav);
+      const restWav = rest ? await rest : null;
+      if (restWav && restWav.byteLength > 0) await play(restWav);
+      releaseGlance();
       timing.push(`${readyWav ? "play cached" : "play"} ${elapsed(readyWav ? voiceStarted : playStarted)}`);
       spoke = true;
     } catch (error) {
@@ -253,9 +323,9 @@ try {
     const audioMs = Math.round((utterance.pcm.length / config.sampleRate) * 1000);
     const recognizeStarted = performance.now();
     const finalTranscript = transcribe(config, utterance.pcm);
-    const pending = currentGuess();
-    const early = pending ? await pending : null;
-    if (early && early.epoch !== utterance.epoch) early.abort.abort();
+    const current = livePending();
+    const early = current && current.epoch === utterance.epoch ? current : null;
+    if (current && current !== early) dropPending();
     let transcript = "";
     try {
       transcript = await finalTranscript;
@@ -265,10 +335,13 @@ try {
       glances.release();
       continue;
     }
-    const earlyGuess = early && early.epoch === utterance.epoch ? early : null;
-    const sameWords = earlyGuess !== null && normalizeHeard(earlyGuess.text) === normalizeHeard(transcript);
-    if (earlyGuess && !sameWords) earlyGuess.abort.abort();
-    const guessed = sameWords ? earlyGuess : null;
+    const earlyText = early ? await early.text : "";
+    const guessed = early && sameUtterance(earlyText, transcript) ? early : null;
+    if (early && !guessed) {
+      early.abort.abort();
+      if (livePending() === early) pending = null;
+      guessGen += 1;
+    }
     let heardTiming = `audio ${audioMs}ms, recognize ${elapsed(recognizeStarted)}${guessed ? " early" : ""}`;
     console.log(`heard: ${transcript || "(silence)"}`);
     if (!transcript) {
@@ -285,22 +358,16 @@ try {
       glances.release();
       continue;
     }
-    const canned = guessed?.cannedWav ? guessed : matchCanned(currentCues()?.lines ?? [], transcript);
+    const canned = guessed ? null : matchCanned(currentCues()?.lines ?? [], transcript);
     turn = (async () => {
-      if (guessed?.cannedWav && guessed.cannedSay) {
-        await respond(heardTiming, guessed.cannedSay, guessed.cannedWav);
-        return;
-      }
-      if (canned && "wav" in canned && canned.wav.byteLength > 0) {
-        await respond(`${heardTiming}, quick`, canned.say, canned.wav);
+      if (canned && canned.wav.byteLength > 0) {
+        await respond(`${heardTiming}, quick`, canned.say, canned.wav, null);
         return;
       }
       let line = "";
       const replyStarted = performance.now();
       try {
-        line = guessed?.reply
-          ? await guessed.reply
-          : await firstSpokenSentence(config, context.prompt(), AbortSignal.timeout(60_000));
+        line = guessed ? await guessed.line : await firstSpokenSentence(config, context.prompt(), AbortSignal.timeout(60_000));
         if (!line) throw new Error("Ollama returned an empty reply");
         heardTiming = `${heardTiming}, reply ${elapsed(replyStarted)}`;
       } catch (error) {
@@ -310,9 +377,13 @@ try {
         glances.release();
         return;
       }
-      await respond(heardTiming, line, null);
+      const voiceStarted = performance.now();
+      const opening = guessed ? await guessed.opening : null;
+      if (opening) heardTiming = `${heardTiming}, voice ${elapsed(voiceStarted)}`;
+      await respond(heardTiming, line, opening, guessed ? guessed.rest : null);
     })().finally(() => {
       turn = null;
+      if (livePending() === early) pending = null;
     });
   }
 } catch (error) {

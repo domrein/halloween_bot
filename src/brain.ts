@@ -1,6 +1,6 @@
 import type { Config } from "./config.ts";
 import { root } from "./paths.ts";
-import { firstSentence, unfinishedLine } from "./sentence.ts";
+import { firstSentence, firstSpokenChunk, unfinishedLine } from "./sentence.ts";
 
 const SPEAK_RULE = "Say only one short sentence, the words to speak aloud. No quotation marks, no stage directions, no emoji, no labels.";
 
@@ -33,11 +33,25 @@ export async function describeScene(config: Config, frame: Uint8Array, signal: A
   return phrase;
 }
 
-export async function firstSpokenSentence(config: Config, memory: string, signal: AbortSignal): Promise<string> {
+export async function firstSpokenSentence(
+  config: Config,
+  memory: string,
+  signal: AbortSignal,
+  onOpening?: (text: string) => void,
+): Promise<string> {
   const character = await Bun.file(`${root}/${config.roleFile}`).text();
+  let opened = false;
   const content = await chat(config, config.ollamaReplyModel, signal, {
     stream: true,
     stopAtSentence: true,
+    onText: (soFar) => {
+      if (!onOpening || opened) return;
+      const done = firstSentence(soFar);
+      const chunk = firstSpokenChunk(done ?? unfinishedLine(soFar));
+      if (!done && !chunk.later) return;
+      opened = true;
+      onOpening(chunk.now);
+    },
     messages: [
       { role: "system", content: `${character.trim()}\n\n${SPEAK_RULE}` },
       {
@@ -68,6 +82,7 @@ async function chat(
   request: {
     stream: true;
     stopAtSentence?: boolean;
+    onText?: (content: string) => void;
     messages: ChatMessage[];
     options: { temperature: number; num_predict: number; num_ctx: number };
   },
@@ -106,6 +121,7 @@ async function chat(
         const chunk = readChunk(line);
         if (chunk.error) throw new Error(chunk.error);
         content += chunk.text;
+        request.onText?.(content);
         if (request.stopAtSentence && firstSentence(content)) return content;
         if (chunk.done) return content;
       }

@@ -65,21 +65,13 @@ const replyMean = mean(replies);
 console.log(`  mean reply ${Math.round(replyMean)}ms`);
 
 const silence = config.silenceMs;
-const speechMs = 1150;
-const partialAt = 700;
-const head = speechMs - partialAt;
-console.log("\ngap from the last speech sample to the answer starting");
-console.log(
-  `silence ${silence}ms. if a snapshot ${partialAt}ms into a ${speechMs}ms phrase still matches, the reply has a ${head}ms head start.`,
-);
+console.log("\ngap from the last speech sample until the answer audio is ready");
+console.log("the delay phrase plays during the reply and the voice render");
 for (const device of devices) {
   const score = voiceScores[device];
   if (!score) continue;
-  const serial = silence + replyMean + score.full;
-  const early = Math.max(silence, Math.max(0, replyMean - head) + score.chunk);
-  console.log(
-    `  ${device} serial ${Math.round(serial)}ms, early-partial ${Math.round(early)}ms (new line ${Math.round(score.full)}ms, opening ${Math.round(score.chunk)}ms)`,
-  );
+  const ready = silence + replyMean + score.full;
+  console.log(`  ${device} ${Math.round(ready)}ms (silence ${silence}ms, reply ${Math.round(replyMean)}ms, voice ${Math.round(score.full)}ms)`);
 }
 
 function devicesFromArgv(args: string[]): Array<"cpu" | "coreml"> {
